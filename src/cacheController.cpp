@@ -104,10 +104,9 @@ CacheController::AddressInfo CacheController::getAddressInfo(unsigned long int a
 }
 
 void CacheController::cacheAccess(CacheResponse* response, bool isWrite, unsigned long int address, 
-									std::mutex& mutex, std::condition_variable& convar, bus& Bus)
+											std::mutex& mutex, std::condition_variable& convar, bus& Bus)
 {
 	AddressInfo ai = getAddressInfo(address);
-	//callback handler that gets invoked when another cache puts a message on the bus
 	funcPointer fp = std::bind(&CacheController::onBusresponse, *this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
 	// Check if the instruction is a read or write instruction
 	if(isWrite)
@@ -147,17 +146,17 @@ void CacheController::runTracefile(std::mutex& mutex, std::condition_variable& c
 		CacheResponse response;
 		
 		if (std::regex_match(line, match, readPattern)) {
-			std::istringstream hexStream(match.str(2));
+			std::istringstream hexStream(match.str(1));
 			hexStream >> std::hex >> address;
-			// outfile << match.str(1) << match.str(2);
+			outfile << "R " << match.str(1);
 			cacheAccess(&response, false, address, mutex, convar, Bus);
-			// outfile << " " << response.cycles << (response.hit ? " hit" : " miss") << (response.eviction ? " eviction" : "");
+			outfile << " " << response.cycles << (response.hit ? " hit" : " miss") << (response.eviction ? " eviction" : "");
 		} else if (std::regex_match(line, match, writePattern)) {
-			std::istringstream hexStream(match.str(2));
+			std::istringstream hexStream(match.str(1));
 			hexStream >> std::hex >> address;
-			// outfile << match.str(1) << match.str(2);
+			outfile << "W " << match.str(1);
 			cacheAccess(&response, true, address, mutex, convar, Bus);
-			// outfile << " " << response.cycles << (response.hit ? " hit" : " miss") << (response.eviction ? " eviction" : "");
+			outfile << " " << response.cycles << (response.hit ? " hit" : " miss") << (response.eviction ? " eviction" : "");
 		} 
 		else {
 			throw std::runtime_error("Encountered unknown line format in tracefile.");
@@ -165,7 +164,7 @@ void CacheController::runTracefile(std::mutex& mutex, std::condition_variable& c
 		outfile << std::endl;
 	}
 
-	// Final core statistics
+	// Final cache statistics
 	outfile << "Hits: " << globalHits << " Misses: " << globalMisses << " Evictions: " << globalEvictions << std::endl;
 	outfile << "Cycles: " << globalCycles << std::endl;
 

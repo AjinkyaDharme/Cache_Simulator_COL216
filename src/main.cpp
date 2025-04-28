@@ -51,6 +51,7 @@ int main(int argc, char *argv[])
 	{
 		threads[i] = std::thread(initializeCache, config, argv[2 + i], i, std::ref(mutex), std::ref(convar), std::ref(Bus));	// For each iteration, make a new thread and call function thrSync()
 		std::cout << "Thread " << i << ": Starting, Waiting\n";		
+        // std::this_thread::sleep_for(std::chrono::milliseconds());
 	}
 
     

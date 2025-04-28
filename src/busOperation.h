@@ -17,7 +17,7 @@ class bus
 {
     public:
         std::map <std::string, value> bus;
-        void putMsg_onBus(std::string, std::string, std::function<void(unsigned int, unsigned long int, std::string)>, int);
+        void putMsg_onBus(std::string, std::string, std::function<void(unsigned int, unsigned long int, std::string)>, int,unsigned long int &);
         
 };
 

@@ -41,7 +41,7 @@ class CacheController
 		int threadId;
 		
 		funcPointer fp;
-		typedef std::function <void(unsigned int, unsigned long int, std::string)> funcPointer;
+		// typedef std::function <void(unsigned int, unsigned long int, std::string)> funcPointer;
         
         std::vector <std::vector <cacheEntry> > cache;
 

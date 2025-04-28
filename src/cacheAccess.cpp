@@ -11,14 +11,16 @@
 #include "busOperation.h"
 
 
-void accessBus(unsigned int indexNo, unsigned long int tag, std::mutex &mutex, std::condition_variable& convar,
+unsigned long int accessBus(unsigned int indexNo, unsigned long int tag, std::mutex &mutex, std::condition_variable& convar,
             bus &Bus, std::string message, int threadId, funcPointer fp)
 {   
 
     std::lock_guard<std::mutex> lock(mutex);
-
+    unsigned long int cycles=0;
     std::string address = std::to_string(indexNo) + "|" + std::to_string(tag);
-    Bus.putMsg_onBus(address, message, fp, threadId);
+    Bus.putMsg_onBus(address, message, fp, threadId,cycles);
+
+    return cycles;
 }
 
 void writeOnCache(unsigned int indexNo, unsigned long int tag, std::vector <cacheEntry>& cacheSet, CacheResponse* response,
@@ -42,7 +44,7 @@ void writeOnCache(unsigned int indexNo, unsigned long int tag, std::vector <cach
             response -> eviction = 0;
             response -> dirtyEviction = 0;
            
-            accessBus(indexNo, tag, mutex, convar, Bus, "write", threadId, fp);
+            numberOfCycles+=accessBus(indexNo, tag, mutex, convar, Bus, "write", threadId, fp);
             itr -> first.first.first = 1;
             flag = 0;
             
@@ -70,7 +72,7 @@ void writeOnCache(unsigned int indexNo, unsigned long int tag, std::vector <cach
             
             if(itr -> first.second == 1)
             {   // Shared bit is not 0, which means the data is being shared by other caches, Go and invalidate it
-                accessBus(indexNo, tag, mutex, convar, Bus, "write", threadId, fp);
+                numberOfCycles+=accessBus(indexNo, tag, mutex, convar, Bus, "write", threadId, fp);
             }
 
             flag = 0;
@@ -95,7 +97,7 @@ void writeOnCache(unsigned int indexNo, unsigned long int tag, std::vector <cach
         response -> eviction = 1;
 		
         // Since this requires memory access, try to acquire the bus first
-        accessBus(indexNo, tag, mutex, convar, Bus, "write", threadId, fp);
+        numberOfCycles+=accessBus(indexNo, tag, mutex, convar, Bus, "write", threadId, fp);
 
             auto itr = std::prev(cacheSet.end());
             
@@ -145,8 +147,9 @@ void readFromCache(unsigned int indexNo, unsigned long int tag, std::vector <cac
 
             itr -> first.first.first = 1;
             itr -> second = tag;
+            
             //put request on bus to fetch from cache if not then we have to fetch from memory
-            accessBus(indexNo, tag, mutex, convar, Bus, "read", threadId, fp);
+            numberOfCycles+=accessBus(indexNo, tag, mutex, convar, Bus, "read", threadId, fp);
 
 
             // numberOfCycles += config.memoryAccessCycles;
@@ -185,7 +188,7 @@ void readFromCache(unsigned int indexNo, unsigned long int tag, std::vector <cac
             response -> hit = 0;
             response -> eviction = 1;
 
-            accessBus(indexNo, tag, mutex, convar, Bus, "read", threadId, fp);
+            numberOfCycles+=accessBus(indexNo, tag, mutex, convar, Bus, "read", threadId, fp);
 
                 auto itr = std::prev(cacheSet.end());
                 // numberOfCycles += config.memoryAccessCycles;

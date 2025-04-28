@@ -4,19 +4,16 @@
 
 enum class ReplacementPolicy 
 {
-	Random,
 	LRU
 };
 
 enum class WritePolicy 
 {
-	WriteThrough,
 	WriteBack
 };
 
 enum class CoherenceProtocol 
 {
-	Simple,
 	MESI
 };
 

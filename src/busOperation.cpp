@@ -10,7 +10,7 @@
 #include "cacheController.h"
 #include "busOperation.h"
 
-void bus::putMsg_onBus(std::string address, std::string message, funcPointer sendResponse, int threadId)
+void bus::putMsg_onBus(std::string address, std::string message, funcPointer sendResponse, int threadId, unsigned long int &cycles)
 {
     // If the address is already present in the bus, send the message to the function pointers of cache controllers present in the value vector
     if(this -> bus.find(address) != this -> bus.end())
@@ -78,6 +78,8 @@ void bus::putMsg_onBus(std::string address, std::string message, funcPointer sen
         
         if(message == "read")
         {
+
+            
             // if no other entry for same thread is present push_back the new entry
             auto newValue = std::make_pair(sendResponse, threadId);
             int foundThreadid = -1;
@@ -114,10 +116,11 @@ void bus::putMsg_onBus(std::string address, std::string message, funcPointer sen
                 }
             }
 
+            
             //Snooping Block was in modified state, and now it is in shared state
-            if(element -> second.size() == 2)
+            else if(element -> second.size() == 2)
             {
-               //cycles=1+max(100,2*N);
+               //cycles=1+(100+2*N);
             }
             //Snooping Block was aleady in shared state, and now it is in shared state
             else if(element -> second.size() > 2)
@@ -133,6 +136,8 @@ void bus::putMsg_onBus(std::string address, std::string message, funcPointer sen
     //EXCLUSIVE STATE LOGIC for first time access
     else
     {   
+        std::cout<<"First time access to the address: " << address << std::endl;
+        cycles+=100;
         std::vector <std::pair <funcPointer, int> > vec;
         vec.push_back(std::make_pair(sendResponse, threadId));
         this -> bus[address] = vec;
