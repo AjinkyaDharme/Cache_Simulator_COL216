@@ -42,6 +42,13 @@ CacheController::CacheController(ConfigInfo config, char* traceFile, int threadI
         cache.push_back(cacheSet);
     }
     this -> cache = cache;
+
+    // Initialize statistics
+    totalInstructions = 0;
+    totalReads = 0;
+    writebacks = 0;
+    busInvalidations = 0;
+    dataTrafficBytes = 0;
     
 }
 
@@ -69,10 +76,15 @@ void CacheController::onBusresponse(unsigned int index, unsigned long int tag, s
 		{
 			if(itr -> second == tag && itr -> first.first.first == 1)
 			{
+				if (itr->first.first.second == 1) // Assuming second bit indicates dirty state
+					{
+						writebacks++; // Increment writeback counter
+					}
 				itr -> first.first.first = 0; // Put Valid bit to 0
 				cacheEntry block = *itr;
                 cacheSet.erase(itr);
                 cacheSet.emplace(cacheSet.end(), block); // Put the invalid entry at the end of set(For implementation reasons)
+				busInvalidations++;
 				break;
 			}
 		}
@@ -111,8 +123,10 @@ void CacheController::cacheAccess(CacheResponse* response, bool isWrite, unsigne
 	// Check if the instruction is a read or write instruction
 	if(isWrite)
 		writeOnCache(ai.setIndex, ai.tag, cache.at(ai.setIndex), response, config, mutex, convar, Bus, threadId, fp);
-	else
-		readFromCache(ai.setIndex, ai.tag, cache.at(ai.setIndex), response, config, mutex, convar, Bus, threadId, fp);
+	else{
+		readFromCache(ai.setIndex, ai.tag, cache.at(ai.setIndex), response, config, mutex, convar, Bus, threadId, fp, &writebacks);
+		totalReads++;
+	}
 	
 	globalCycles += response -> cycles;
 	
@@ -123,6 +137,9 @@ void CacheController::cacheAccess(CacheResponse* response, bool isWrite, unsigne
 	
 	if(response -> eviction != 0)
 		globalEvictions++;
+
+    totalInstructions++;
+    dataTrafficBytes += response->trafficBytes; // Assuming trafficBytes is part of CacheResponse
 }
 
 
@@ -170,4 +187,25 @@ void CacheController::runTracefile(std::mutex& mutex, std::condition_variable& c
 
 	infile.close();
 	outfile.close();
+}
+
+std::string CacheController::getStatistics() {
+    double cacheMissRate = (totalInstructions > 0) ? 
+                    (static_cast<double>(globalMisses) / (totalInstructions)) * 100 : 0.0;
+
+    std::ostringstream stats;
+    stats << "Core " << threadId << " Statistics:\n";
+    stats << "Total Instructions: " << totalInstructions << "\n";
+    stats << "Total Reads: " << totalReads << "\n";
+    stats << "Total Writes: " << totalInstructions - totalReads << "\n";
+    stats << "Total Execution Cycles: " << globalCycles << "\n";
+    stats << "Idle Cycles: " << globalCycles - totalInstructions << "\n";
+    stats << "Cache Misses: " << globalMisses << "\n";
+    stats << "Cache Miss Rate: " << cacheMissRate << "%\n";
+    stats << "Cache Evictions: " << globalEvictions << "\n";
+    stats << "Writebacks: " << writebacks << "\n";
+    stats << "Bus Invalidations: " << busInvalidations << "\n";
+    stats << "Data Traffic (Bytes): " << dataTrafficBytes << "\n\n";
+
+    return stats.str();
 }

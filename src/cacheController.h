@@ -4,6 +4,7 @@
 #include <string>
 #include <mutex>
 #include <condition_variable>
+#include <fstream>
 
 #include "cacheconf.h"
 #include "cacheStructure.h"
@@ -17,6 +18,7 @@ struct CacheResponse
 	bool eviction;			// did this memory operation involve an eviction?
 	bool dirtyEviction; 	// was the evicted block marked as dirty?
 	unsigned int cycles; 	// how many clock cycles did this particular operation take?
+	unsigned long trafficBytes;
 };
 
 class CacheController
@@ -52,10 +54,18 @@ class CacheController
 		// compute the number of clock cycles used to complete a memory access
 		void updateCycles(CacheResponse*, bool);
 
+		// Add member variables to track statistics
+		unsigned long totalInstructions;
+		unsigned long totalReads;
+		unsigned long writebacks;
+		unsigned long busInvalidations;
+		unsigned long dataTrafficBytes;
+
 	public:
 		CacheController(ConfigInfo, char *, int);
 		void runTracefile(std::mutex&, std::condition_variable&, bus&);
 		void onBusresponse(unsigned int, unsigned long int, std::string);
+		std::string getStatistics(); // Add this declaration
 };
 
 #endif //CACHECONTROLLER

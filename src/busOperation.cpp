@@ -118,12 +118,12 @@ void bus::putMsg_onBus(std::string address, std::string message, funcPointer sen
 
             
             //Snooping Block was in modified state, and now it is in shared state
-            else if(element -> second.size() == 2)
+            if(element -> second.size() == 2)
             {
                //cycles=1+(100+2*N);
             }
             //Snooping Block was aleady in shared state, and now it is in shared state
-            else if(element -> second.size() > 2)
+            if(element -> second.size() > 2)
             {
                 //cycles=1+2*N;
             }

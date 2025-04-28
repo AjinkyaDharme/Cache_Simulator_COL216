@@ -123,9 +123,8 @@ void writeOnCache(unsigned int indexNo, unsigned long int tag, std::vector <cach
 }
 
 void readFromCache(unsigned int indexNo, unsigned long int tag, std::vector <cacheEntry>& cacheSet, CacheResponse* response, ConfigInfo config, 
-                     std::mutex &mutex, std::condition_variable &convar, bus &Bus, int threadId, funcPointer fp)
+                     std::mutex &mutex, std::condition_variable &convar, bus &Bus, int threadId, funcPointer fp, unsigned long* writebacks)
 {
-    
     unsigned long int numberOfCycles = 0;
     int flag = -1;
     
@@ -135,11 +134,9 @@ void readFromCache(unsigned int indexNo, unsigned long int tag, std::vector <cac
     // We are at the index where we have to perform read operation, now check every set to find where the data might be present to read from.
     for(auto itr = cacheSet.begin(); itr != cacheSet.end(); itr++)
     {
-       
         // CHECK FOR VALID BIT
         if(itr -> first.first.first == 0)
         {
-            // If valid bit is 0, simply write on the cache block
             response -> hit = 0;
             response -> eviction = 0;
             response -> dirtyEviction = 0;
@@ -148,13 +145,10 @@ void readFromCache(unsigned int indexNo, unsigned long int tag, std::vector <cac
             itr -> first.first.first = 1;
             itr -> second = tag;
             
-            //put request on bus to fetch from cache if not then we have to fetch from memory
-            numberOfCycles+=accessBus(indexNo, tag, mutex, convar, Bus, "read", threadId, fp);
+            // Put request on bus to fetch from cache if not then we have to fetch from memory
+            numberOfCycles += accessBus(indexNo, tag, mutex, convar, Bus, "read", threadId, fp);
 
-
-            // numberOfCycles += config.memoryAccessCycles;
-            
-            // move the recently written block to the first position of the array
+            // Move the recently written block to the first position of the array
             if (config.replacementPolicy == ReplacementPolicy::LRU) 
             {
                 cacheEntry block = *itr;
@@ -166,15 +160,14 @@ void readFromCache(unsigned int indexNo, unsigned long int tag, std::vector <cac
         
         // CHECK FOR TAG BITS
         if(itr -> second == tag && itr -> first.first.first == 1)
-        {// If valid bit is 1 and we find the matching tag
+        {
             response -> hit = 1;
             response -> eviction = 0;
             response -> dirtyEviction = 0;
-
             flag = 0;
-            
+
             if (config.replacementPolicy == ReplacementPolicy::LRU) 
-            {// move the recently written block to the first position of the array
+            {
                 cacheEntry block = *itr;
                 cacheSet.erase(itr);
                 cacheSet.emplace(cacheSet.begin(), block);
@@ -184,32 +177,29 @@ void readFromCache(unsigned int indexNo, unsigned long int tag, std::vector <cac
     }
 
     if(flag == -1)
-        {// Nothing matched, we need to perform eviction
-            response -> hit = 0;
-            response -> eviction = 1;
+    {
+        response -> hit = 0;
+        response -> eviction = 1;
 
-            numberOfCycles+=accessBus(indexNo, tag, mutex, convar, Bus, "read", threadId, fp);
+        numberOfCycles += accessBus(indexNo, tag, mutex, convar, Bus, "read", threadId, fp);
 
-                auto itr = std::prev(cacheSet.end());
-                // numberOfCycles += config.memoryAccessCycles;
+        auto itr = std::prev(cacheSet.end());
 
-				if (config.writePolicy == WritePolicy::WriteBack)
-				{
-					if (itr->first.first.second == 1)
-					{
-						response->dirtyEviction = 1;
-						numberOfCycles += config.memoryAccessCycles;
-					}
-				}
-                cacheSet.erase(itr);
-                cacheEntry block;
-                block.first.first.first = 1;
-                block.first.first.second = 0;
-                block.second = tag;
-                cacheSet.emplace(cacheSet.begin(), block);
-				
-            
+        if (config.writePolicy == WritePolicy::WriteBack)
+        {
+            if (itr->first.first.second == 1)
+            {
+                response->dirtyEviction = 1;
+                numberOfCycles += config.memoryAccessCycles;
+                (*writebacks)++; // Increment writebacks for dirty eviction
+            }
         }
+        cacheSet.erase(itr);
+        cacheEntry block;
+        block.first.first.first = 1;
+        block.first.first.second = 0;
+        block.second = tag;
+        cacheSet.emplace(cacheSet.begin(), block);
+    }
     response -> cycles = numberOfCycles;
-
 }

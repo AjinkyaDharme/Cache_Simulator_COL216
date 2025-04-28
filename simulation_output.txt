@@ -1,0 +1,52 @@
+Core 0 Statistics:
+Total Instructions: 5
+Total Reads: 3
+Total Writes: 2
+Total Execution Cycles: 105
+Idle Cycles: 100
+Cache Misses: 1
+Cache Miss Rate: 20%
+Cache Evictions: 0
+Writebacks: 0
+Bus Invalidations: 0
+Data Traffic (Bytes): 0
+
+Core 1 Statistics:
+Total Instructions: 5
+Total Reads: 3
+Total Writes: 2
+Total Execution Cycles: 105
+Idle Cycles: 100
+Cache Misses: 1
+Cache Miss Rate: 20%
+Cache Evictions: 0
+Writebacks: 0
+Bus Invalidations: 0
+Data Traffic (Bytes): 0
+
+Core 2 Statistics:
+Total Instructions: 5
+Total Reads: 2
+Total Writes: 3
+Total Execution Cycles: 105
+Idle Cycles: 100
+Cache Misses: 1
+Cache Miss Rate: 20%
+Cache Evictions: 0
+Writebacks: 0
+Bus Invalidations: 0
+Data Traffic (Bytes): 0
+
+Core 3 Statistics:
+Total Instructions: 5
+Total Reads: 3
+Total Writes: 2
+Total Execution Cycles: 105
+Idle Cycles: 100
+Cache Misses: 1
+Cache Miss Rate: 20%
+Cache Evictions: 0
+Writebacks: 0
+Bus Invalidations: 0
+Data Traffic (Bytes): 0
+
