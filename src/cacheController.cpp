@@ -101,7 +101,6 @@ void CacheController::onBusresponse(unsigned int index, unsigned long int tag, s
 		}
 		return;
 	}
-	
 }
 
 CacheController::AddressInfo CacheController::getAddressInfo(unsigned long int address)

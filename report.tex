@@ -1,0 +1,100 @@
+\documentclass[11pt]{article}
+\usepackage{geometry}
+\geometry{margin=1in}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning}
+\tikzstyle{startstop} = [rectangle, rounded corners, minimum width=3cm, minimum height=1cm,text centered, draw=black, fill=gray!20]
+\tikzstyle{process} = [rectangle, minimum width=3cm, minimum height=1cm, text centered, draw=black, fill=blue!10]
+\tikzstyle{decision} = [diamond, minimum width=3.5cm, minimum height=1cm, text centered, draw=black, fill=orange!20]
+\tikzstyle{arrow} = [thick,->,>=stealth]
+
+
+\title{Cache Simulator Report}
+\author{}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\section{Implementation Details}
+
+The cache simulator has been implemented in C++ using a modular and object-oriented approach. The main components are:
+
+\subsection*{1. Main Driver: \texttt{main.cpp}}
+This file initializes the simulation environment and drives the application by:
+\begin{itemize}
+  \item Reading configuration and trace files.
+  \item Instantiating cache controllers.
+  \item Managing the simulation loop.
+\end{itemize}
+
+\subsection*{2. Cache Access: \texttt{cacheAccess.cpp/h}}
+This module defines the logic to access individual cache blocks, perform tag checks, determine hit/miss, and handle block replacements using LRU policies.
+
+\subsection*{3. Cache Controller: \texttt{cacheController.cpp/h}}
+Handles operations at the level of the whole cache:
+\begin{itemize}
+  \item Coordinates between memory requests and cache responses.
+  \item Implements cache coherence if necessary.
+  \item Maintains statistics (hits, misses, execution time).
+\end{itemize}
+
+\subsection*{4. Cache Structures: \texttt{cacheStructure.h}}
+Defines the internal data representation of cache blocks and sets. Important structures include:
+\begin{itemize}
+  \item \texttt{CacheBlock} with tag, valid/dirty bits.
+  \item \texttt{CacheSet} with a list/vector of blocks, supporting LRU management.
+\end{itemize}
+
+\subsection*{5. Bus Operation: \texttt{busOperation.cpp/h}}
+Responsible for coordinating memory access across processors:
+\begin{itemize}
+  \item Emulates memory bus or interconnect.
+  \item Synchronizes memory operations (loads/stores).
+\end{itemize}
+
+\subsection*{6. Configuration: \texttt{cacheconf.h}}
+Defines simulation parameters such as:
+\begin{itemize}
+  \item Cache size (default: 4KB).
+  \item Associativity (default: 2-way).
+  \item Block size (default: 32 bytes).
+\end{itemize}
+
+\section*{Flowchart of Cache Simulation}
+
+\begin{center}
+\begin{tikzpicture}[node distance=1.5cm]
+
+\node (start) [startstop] {Start};
+\node (load) [process, below of=start] {Load configuration \& trace};
+\node (request) [process, below of=load] {Fetch memory request};
+\node (check) [decision, below of=request, yshift=-0.5cm] {Cache Hit?};
+\node (hit) [process, right of=check, xshift=4cm] {Update LRU \& stats};
+\node (miss) [process, below of=check, yshift=-2cm] {Fetch block from memory, evict if needed};
+\node (update) [process, below of=miss] {Update cache \& stats};
+\node (more) [decision, below of=update, yshift=-1.0cm] {More requests?};
+\node (end) [startstop, below of=more, yshift=-1.2cm] {End Simulation};
+
+\draw [arrow] (start) -- (load);
+\draw [arrow] (load) -- (request);
+\draw [arrow] (request) -- (check);
+\draw [arrow] (check) -- node[above] {Yes} (hit);
+\draw [arrow] (hit) |- (more);
+\draw [arrow] (check) -- node[right] {No} (miss);
+\draw [arrow] (miss) -- (update);
+\draw [arrow] (update) -- (more);
+\draw [arrow] (more) -- node[right] {No} (end);
+\draw [arrow] (more.west) -- ++(-2,0) -- ++(0,8) node[above] {Yes} -- (request.west);
+
+
+\end{tikzpicture}
+\end{center}
+
+
+\end{document}
