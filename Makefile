@@ -1,7 +1,7 @@
 CC := g++
 SRCDIR := src
 BUILDDIR := build
-TARGET := bin/cache_sim
+TARGET := bin/L1simulate
  
 SRCEXT := cpp
 SOURCES := $(shell find $(SRCDIR) -type f -name *.$(SRCEXT))
@@ -16,6 +16,7 @@ $(TARGET): $(OBJECTS)
 	@echo "Linking..."
 	@mkdir -p bin
 	@echo " $(CC) $^ -o $(TARGET) $(LIB) $(LDFLAGS)"; $(CC) $^ -o $(TARGET) $(LIB) $(LDFLAGS)
+	@cp $(TARGET) ./L1simulate # Copy the executable to the root directory
 
 $(BUILDDIR)/%.o: $(SRCDIR)/%.$(SRCEXT)
 	@mkdir -p $(BUILDDIR)
@@ -23,6 +24,12 @@ $(BUILDDIR)/%.o: $(SRCDIR)/%.$(SRCEXT)
 
 clean:
 	@echo "Cleaning..."; 
-	@echo " $(RM) -r $(BUILDDIR) $(TARGET)"; $(RM) -r $(BUILDDIR) $(TARGET)
+	@echo " $(RM) -r $(BUILDDIR) $(TARGET) L1simulate"; $(RM) -r $(BUILDDIR) $(TARGET) L1simulate
 
 .PHONY: clean
+
+run: $(TARGET)
+	@echo "Running the program..."
+	@./L1simulate $(ARGS)
+
+.PHONY: run
