@@ -21,6 +21,8 @@ struct CacheResponse
 	unsigned long trafficBytes;
 };
 
+extern CacheResponse response;
+
 class CacheController
 {
 	private:
@@ -41,31 +43,51 @@ class CacheController
 		unsigned int globalMisses;
 		unsigned int globalEvictions;
 		int threadId;
+		bool executionCompleted; // Track if this core has completed execution
+		unsigned int idleCycles;
 		
 		funcPointer fp;
 		// typedef std::function <void(unsigned int, unsigned long int, std::string)> funcPointer;
         
         std::vector <std::vector <cacheEntry> > cache;
-
+		
 		// function to allow read or write access to the cache
 		void cacheAccess(CacheResponse*, bool, unsigned long int, std::mutex&, std::condition_variable&, bus&);
 		// function that can compute the index and tag matching a specific address
 		AddressInfo getAddressInfo(unsigned long int);
 		// compute the number of clock cycles used to complete a memory access
 		void updateCycles(CacheResponse*, bool);
-
+		
 		// Add member variables to track statistics
 		unsigned long totalInstructions;
 		unsigned long totalReads;
 		unsigned long writebacks;
 		unsigned long busInvalidations;
 		unsigned long dataTrafficBytes;
+		
 
 	public:
 		CacheController(ConfigInfo, char *, int);
 		void runTracefile(std::mutex&, std::condition_variable&, bus&);
 		void onBusresponse(unsigned int, unsigned long int, std::string);
-		std::string getStatistics(); // Add this declaration
+		std::string getStatistics(); 
+		enum class LineState { Modified, Exclusive, Shared, Invalid };
+    	LineState getLineState(unsigned int setIndex, unsigned long tag) const;
+		unsigned long long getDataTrafficBytes() const;
+        void addTrafficBytes(unsigned long bytes) {
+            dataTrafficBytes += bytes;
+        }
+        
+        void incrementBusInvalidations() {
+            busInvalidations++;
+        }
+
+		void incrementIdleCycles(unsigned int cycles);
+        bool isExecutionCompleted() const { return executionCompleted; }
+        
+    
+    	unsigned int getTotalExecutionCycles() const { return globalCycles; }
+
 };
 
 #endif //CACHECONTROLLER

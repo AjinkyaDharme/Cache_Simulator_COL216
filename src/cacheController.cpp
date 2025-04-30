@@ -11,7 +11,6 @@
 #include "cacheAccess.h"
 #include "busOperation.h"
 
-
 //Initialize the particular cache and other parameters
 CacheController::CacheController(ConfigInfo config, char* traceFile, int threadId)
 {
@@ -29,6 +28,8 @@ CacheController::CacheController(ConfigInfo config, char* traceFile, int threadI
     this -> globalMisses = 0;
     this -> globalEvictions = 0;
 	this -> threadId = threadId;
+    this -> idleCycles = 0;
+    this -> executionCompleted = false;
 
 	// form a function pointer to onBusresponse()
 	funcPointer fp = std::bind(&CacheController::onBusresponse, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
@@ -43,7 +44,8 @@ CacheController::CacheController(ConfigInfo config, char* traceFile, int threadI
     }
     this -> cache = cache;
 
-    // Initialize statistics
+	// Initialize statistics
+
     totalInstructions = 0;
     totalReads = 0;
     writebacks = 0;
@@ -52,56 +54,70 @@ CacheController::CacheController(ConfigInfo config, char* traceFile, int threadI
     
 }
 
+void CacheController::incrementIdleCycles(unsigned int cycles) {
+    // Only increment idle cycles if this core hasn't completed execution
+    if (!executionCompleted) {
+        idleCycles += cycles;
+    }
+}
+
 void CacheController::onBusresponse(unsigned int index, unsigned long int tag, std::string message)
 {
-	
-	auto cacheSet = cache.at(index);
-	if(message == "read")
-	{
-		for(auto itr = cacheSet.begin(); itr != cacheSet.end(); itr++)
-		{
-        	if(itr -> second == tag && itr -> first.first.first == 1)
-			{
-				itr -> first.second = 1; // set shared bit to one
-				break;
-			}
+    auto& cacheSet = cache.at(index);
+    if(message == "read") {
+        for(auto itr = cacheSet.begin(); itr != cacheSet.end(); itr++) {
+            if(itr->second == tag && itr->first.first.first == 1) {
+                itr->first.second = 1; // Set shared bit
+                break;
+            }
+        }
+        return;    
+    }
 
-		}
-		return;	
-	}
-
-	if(message == "write")
-	{
-		for(auto itr = cacheSet.begin(); itr != cacheSet.end(); itr++)
-		{
-			if(itr -> second == tag && itr -> first.first.first == 1)
-			{
-				if (itr->first.first.second == 1) // Assuming second bit indicates dirty state
-					{
-						writebacks++; // Increment writeback counter
-					}
-				itr -> first.first.first = 0; // Put Valid bit to 0
-				cacheEntry block = *itr;
-                cacheSet.erase(itr);
-                cacheSet.emplace(cacheSet.end(), block); // Put the invalid entry at the end of set(For implementation reasons)
-				busInvalidations++;
-				break;
-			}
-		}
-	}
-	if (message == "notSharedAnymore")
+    if(message == "write") {
+        for(auto itr = cacheSet.begin(); itr != cacheSet.end(); itr++) {
+            if(itr->second == tag && itr->first.first.first == 1) {
+                if(itr->first.first.second == 1) { // If block is dirty
+                    // dataTrafficBytes += config.blockSize; // Track writeback traffic
+                    // writebacks++;
+                }
+                
+                // busInvalidations++;
+                itr->first.first.first = 0;
+                cacheEntry block = *itr;
+                cacheSet.erase(itr); 
+                cacheSet.emplace(cacheSet.end(), block);
+                break;
+            }
+        }
+    }
+    if (message == "notSharedAnymore")
 	{
 		for (auto itr = cacheSet.begin(); itr != cacheSet.end(); itr++)
 		{
 			if (itr->second == tag && itr->first.first.first == 1)
 			{
-				itr->first.second = 0;
+				itr->first.second = 0;   //Changed to modified state
 				break;
 			}
 		}
 		return;
 	}
 }
+
+CacheController::LineState CacheController::getLineState(unsigned int idx, unsigned long tag) const {
+    auto& set = cache.at(idx);
+    for (auto const & entry : set) {
+        if (entry.second == tag && entry.first.first.first /* valid */) {
+            // Dirty bit == Modified
+            if (entry.first.first.second) return LineState::Modified;
+            // Shared bit == Exclusive vs Shared
+            return entry.first.second ? LineState::Shared : LineState::Exclusive;
+        }
+    }
+    return LineState::Invalid;
+}
+
 
 CacheController::AddressInfo CacheController::getAddressInfo(unsigned long int address)
 {	
@@ -115,96 +131,119 @@ CacheController::AddressInfo CacheController::getAddressInfo(unsigned long int a
 }
 
 void CacheController::cacheAccess(CacheResponse* response, bool isWrite, unsigned long int address, 
-											std::mutex& mutex, std::condition_variable& convar, bus& Bus)
+                                            std::mutex& mutex, std::condition_variable& convar, bus& Bus)
 {
-	AddressInfo ai = getAddressInfo(address);
-	funcPointer fp = std::bind(&CacheController::onBusresponse, *this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
-	// Check if the instruction is a read or write instruction
-	if(isWrite)
-		writeOnCache(ai.setIndex, ai.tag, cache.at(ai.setIndex), response, config, mutex, convar, Bus, threadId, fp);
-	else{
-		readFromCache(ai.setIndex, ai.tag, cache.at(ai.setIndex), response, config, mutex, convar, Bus, threadId, fp, &writebacks);
-		totalReads++;
-	}
-	
-	globalCycles += response -> cycles;
-	
-	if(response -> hit == 0)
-		globalMisses++;
-	else
-		globalHits++;
-	
-	if(response -> eviction != 0)
-		globalEvictions++;
+    response->hit = 0;
+    response->eviction = 0;
+    response->dirtyEviction = 0;
+    response->cycles = 0;
+    response->trafficBytes = 0;
+    AddressInfo ai = getAddressInfo(address);
+    funcPointer fp = std::bind(&CacheController::onBusresponse, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+    // Check if the instruction is a read or write instruction
+    if (isWrite)
+        writebacks += writeOnCache(ai.setIndex, ai.tag, cache.at(ai.setIndex), response, config, mutex, convar, Bus, threadId, fp);
+    else {
+        writebacks += readFromCache(ai.setIndex, ai.tag, cache.at(ai.setIndex), response, config, mutex, convar, Bus, threadId, fp);
+        totalReads++;
+    }
+    globalCycles += response->cycles;
+
+    if (response->hit == 0)
+        globalMisses++;
+    else
+        globalHits++;
+
+    if (response->eviction != 0)
+        globalEvictions++;
 
     totalInstructions++;
-    dataTrafficBytes += response->trafficBytes; // Assuming trafficBytes is part of CacheResponse
+    dataTrafficBytes += response->trafficBytes;
 }
-
-
 
 void CacheController::runTracefile(std::mutex& mutex, std::condition_variable& convar, bus& Bus) 
 {
-	// process each input line
-	std::string line;
-	std::regex readPattern("R (0x[[:xdigit:]]+)");
-	std::regex writePattern("W (0x[[:xdigit:]]+)");
-
-	std::ofstream outfile(outputFile);
-	std::ifstream infile(inputFile);
-	
-	while (getline(infile, line)) {
-		// these strings will be used in the file output
-		std::string opString, activityString;
-		std::smatch match; // will eventually hold the hexadecimal address string
-		unsigned long int address;
-		// create a struct to track cache response
-		CacheResponse response;
-		
-		if (std::regex_match(line, match, readPattern)) {
-			std::istringstream hexStream(match.str(1));
-			hexStream >> std::hex >> address;
-			outfile << "R " << match.str(1);
-			cacheAccess(&response, false, address, mutex, convar, Bus);
-			outfile << " " << response.cycles << (response.hit ? " hit" : " miss") << (response.eviction ? " eviction" : "");
-		} else if (std::regex_match(line, match, writePattern)) {
-			std::istringstream hexStream(match.str(1));
-			hexStream >> std::hex >> address;
-			outfile << "W " << match.str(1);
-			cacheAccess(&response, true, address, mutex, convar, Bus);
-			outfile << " " << response.cycles << (response.hit ? " hit" : " miss") << (response.eviction ? " eviction" : "");
-		} 
-		else {
+    // process each input line
+    std::string line;
+   
+    std::ofstream outfile(outputFile);
+    std::ifstream infile(inputFile);
+    
+    while (getline(infile, line)) {
+        // Skip comments or empty lines
+        if (line.empty() || line.substr(0, 2) == "==") {
+            continue;
+        }
+        
+        unsigned long int address;
+        CacheResponse response;
+        
+        // Parse based on first character
+        if (line.length() >= 3 && line[0] == 'R' && line[1] == ' ') {
+            // Read operation
+            std::istringstream hexStream(line.substr(2)); // Skip "R "
+            hexStream >> std::hex >> address;
+            outfile << line.substr(0, line.find(' ') + 1) << line.substr(2);
+            cacheAccess(&response, false, address, mutex, convar, Bus);
+            outfile << " " << response.cycles << (response.hit ? " hit" : " miss") << (response.eviction ? " eviction" : "");
+        } 
+        else if (line.length() >= 3 && line[0] == 'W' && line[1] == ' ') {
+            // Write operation
+            std::istringstream hexStream(line.substr(2)); // Skip "W "
+            hexStream >> std::hex >> address;
+            outfile << line.substr(0, line.find(' ') + 1) << line.substr(2);
+            cacheAccess(&response, true, address, mutex, convar, Bus);
+            outfile << " " << response.cycles << (response.hit ? " hit" : " miss") << (response.eviction ? " eviction" : "");
+        } 
+        else {
+			
 			throw std::runtime_error("Encountered unknown line format in tracefile.");
-		}
-		outfile << std::endl;
+
+        }
+        outfile << std::endl;
+    }
+
+    executionCompleted = true; // Mark this core as completed
+}
+	
+	std::string CacheController::getStatistics() {
+	
+		double cacheMissRate = (totalInstructions > 0) ? 
+	
+						(static_cast<double>(globalMisses) / (totalInstructions)) * 100 : 0.0;
+	
+	
+	
+		std::ostringstream stats;
+	
+		stats << "Core " << threadId << " Statistics:\n";
+	
+		stats << "Total Instructions: " << totalInstructions << "\n";
+	
+		stats << "Total Reads: " << totalReads << "\n";
+	
+		stats << "Total Writes: " << totalInstructions - totalReads << "\n";
+	
+		stats << "Total Execution Cycles: " << globalCycles << "\n";
+	
+		stats << "Idle Cycles: " << idleCycles << "\n";
+	
+		stats << "Cache Misses: " << globalMisses << "\n";
+	
+		stats << "Cache Miss Rate: " << cacheMissRate << "%\n";
+	
+		stats << "Cache Evictions: " << globalEvictions << "\n";
+	
+		stats << "Writebacks: " << writebacks << "\n";
+		stats << "Bus Invalidations: " << busInvalidations << "\n";
+	
+		stats << "Data Traffic (Bytes): " << dataTrafficBytes << "\n\n";
+	
+		return stats.str();
+	
 	}
 
-	// Final cache statistics
-	outfile << "Hits: " << globalHits << " Misses: " << globalMisses << " Evictions: " << globalEvictions << std::endl;
-	outfile << "Cycles: " << globalCycles << std::endl;
-
-	infile.close();
-	outfile.close();
+unsigned long long CacheController::getDataTrafficBytes() const {
+    return dataTrafficBytes;
 }
 
-std::string CacheController::getStatistics() {
-    double cacheMissRate = (totalInstructions > 0) ? 
-                    (static_cast<double>(globalMisses) / (totalInstructions)) * 100 : 0.0;
-
-    std::ostringstream stats;
-    stats << "Core " << threadId << " Statistics:\n";
-    stats << "Total Instructions: " << totalInstructions << "\n";
-    stats << "Total Reads: " << totalReads << "\n";
-    stats << "Total Writes: " << totalInstructions - totalReads << "\n";
-    stats << "Total Execution Cycles: " << globalCycles << "\n";
-    stats << "Idle Cycles: " << globalCycles - totalInstructions << "\n";
-    stats << "Cache Misses: " << globalMisses << "\n";
-    stats << "Cache Miss Rate: " << cacheMissRate << "%\n";
-    stats << "Cache Evictions: " << globalEvictions << "\n";
-    stats << "Writebacks: " << writebacks << "\n";
-    stats << "Bus Invalidations: " << busInvalidations << "\n";
-    stats << "Data Traffic (Bytes): " << dataTrafficBytes << "\n\n";
-
-    return stats.str();
-}

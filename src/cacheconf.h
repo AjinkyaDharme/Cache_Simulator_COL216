@@ -2,6 +2,7 @@
 #ifndef _CACHECONF_H_
 #define _CACHECONF_H_
 
+
 enum class ReplacementPolicy 
 {
 	LRU
